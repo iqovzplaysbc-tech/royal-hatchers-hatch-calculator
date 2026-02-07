@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Royal Hatchers Luck Calculator</title>
+  <style>
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#0f0f14;color:#eaeaea;padding:18px;}
+    .wrap{max-width:900px;margin:0 auto;}
+    h1{font-size:20px;margin:0 0 12px 0;}
+    .card{background:#171722;border:1px solid #2a2a3a;border-radius:10px;padding:12px;margin:12px 0;}
+    .row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+    .row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+    @media(max-width:820px){.row{grid-template-columns:repeat(2,minmax(0,1fr));}}
+    label{font-size:12px;color:#bdbdd1;display:block;margin-bottom:4px;}
+    input,select{width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #2a2a3a;background:#0f0f14;color:#eaeaea;}
+    button{padding:9px 12px;border-radius:9px;border:0;cursor:pointer;background:#2c6cff;color:#fff;font-weight:bold;}
+    button:disabled{opacity:.5;cursor:not-allowed;}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+    .tab{background:#232336;border:1px solid #2a2a3a;color:#eaeaea;padding:8px 10px;border-radius:999px;cursor:pointer;font-size:13px;}
+    .tab.active{background:#2c6cff;border-color:#2c6cff;}
+    .muted{color:#bdbdd1;font-size:12px;}
+    pre{white-space:pre-wrap;background:#0b0b10;border:1px solid #2a2a3a;border-radius:10px;padding:10px;margin:10px 0 0 0;}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #2a2a3a;background:#0f0f14;margin-left:6px;color:#bdbdd1}
+    .tier{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid #2a2a3a;background:#0f0f14;color:#bdbdd1}
+    .tier.Royal{border-color:#7d3cff;color:#cbb7ff}
+    .tier.Secret{border-color:#ff4d7a;color:#ffb3c7}
+    .tier.Legendary{border-color:#f7c942;color:#ffe7a0}
+    .tier.Epic{border-color:#7ad7ff;color:#bfeeff}
+    .tier.Rare{border-color:#72ff98;color:#bfffd0}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Royal Hatchers Hatch Calculator <span class="pill">v1</span></h1>
+  <div class="muted">Tip: Use your in-game Debug values for the most accurate results (Luck %, Hatch Time, Egg Hatches).</div>
+
+  <!-- STATS -->
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Luck % (Debug) 🍀</label>
+        <input id="luckPercent" type="number" value="0" min="0" step="1" placeholder="Example: 1678" />
+        <div class="muted" id="luckMulText"></div>
+      </div>
+      <div>
+        <label>Hatch Time (seconds) (Debug) ⏱️</label>
+        <input id="hatchTimeSec" type="number" value="1" min="0.01" step="0.01" placeholder="Example: 0.9" />
+      </div>
+      <div>
+        <label>Egg Hatches per Cycle (Debug) 🥚</label>
+        <input id="eggsPerCycle" type="number" value="1" min="1" step="1" placeholder="Example: 10" />
+      </div>
+      <div>
+        <label>Shiny Multiplier ✨</label>
+        <input id="shinyMult" type="number" value="100" min="1" step="1" />
+        <div class="muted">You said 1/3,000,000 → 1/300,000,000 (×100)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" data-tab="single">Single Pet</div>
+    <div class="tab" data-tab="eggs">Egg Odds</div>
+    <div class="tab" data-tab="sim">Simulator</div>
+  </div>
+
+  <!-- SINGLE -->
+  <div class="card" id="single">
+    <div class="row2">
+      <div>
+        <label>Pick a pet (from any egg)</label>
+        <select id="singlePetSelect"></select>
+        <div class="muted" id="singlePetMeta"></div>
+      </div>
+      <div>
+        <label>Or enter Base Odds (1/x or %)</label>
+        <input id="baseOddsInput" placeholder='Examples: 1/3000000  |  0.01%  |  3.69%' />
+        <div class="muted">If you type here, it overrides the dropdown’s odds.</div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <div>
+        <label>Target chance</label>
+        <select id="targetChance">
+          <option value="0.5">50%</option>
+          <option value="0.9">90%</option>
+          <option value="0.99">99%</option>
+        </select>
+      </div>
+      <div>
+        <label>Also compute shiny?</label>
+        <select id="wantShiny">
+          <option value="no">No</option>
+          <option value="yes">Yes (same pet, shiny)</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:end;gap:8px;">
+        <button id="calcSingleBtn">Calculate</button>
+        <button id="copySingleBtn">Copy</button>
+      </div>
+    </div>
+
+    <pre id="singleOut">Pick a pet (or enter odds), then Calculate.</pre>
+  </div>
+
+  <!-- EGGS -->
+  <div class="card" id="eggs" style="display:none;">
+    <div class="row2">
+      <div>
+        <label>Egg</label>
+        <select id="eggSelect"></select>
+        <div class="muted" id="eggMeta"></div>
+      </div>
+      <div>
+        <label>Filter tier (optional)</label>
+        <select id="tierFilter">
+          <option value="">All</option>
+          <option value="Common">Common</option>
+          <option value="Rare">Rare</option>
+          <option value="Epic">Epic</option>
+          <option value="Legendary">Legendary</option>
+          <option value="Secret">Secret</option>
+          <option value="Royal">Royal</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="renderEggBtn">Show Egg Odds</button>
+      <button id="copyEggBtn">Copy</button>
+    </div>
+
+    <pre id="eggOut">Select an egg, then “Show Egg Odds”.</pre>
+  </div>
+
+  <!-- SIM -->
+  <div class="card" id="sim" style="display:none;">
+    <div class="row">
+      <div>
+        <label>Egg</label>
+        <select id="simEggSelect"></select>
+      </div>
+      <div>
+        <label>Cycles to simulate</label>
+        <input id="simCycles" type="number" min="1" step="1" value="5000"/>
+        <div class="muted">Each cycle hatches (Egg Hatches) eggs.</div>
+      </div>
+      <div>
+        <label>Stop early if hit (optional)</label>
+        <select id="simStopPet">
+          <option value="">No early stop</option>
+        </select>
+      </div>
+      <div>
+        <label>Stop condition</label>
+        <select id="simStopMode">
+          <option value="any">Get at least 1</option>
+          <option value="shiny">Get shiny (uses shiny multiplier)</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="simBtn">Run Simulation</button>
+      <button id="copySimBtn">Copy</button>
+    </div>
+
+    <pre id="simOut">Simulation uses: one result per egg hatch, weighted by your egg odds.\nLuck affects the “1/x” pets (Legendary/Secret/Royal) by dividing their denominators.</pre>
+  </div>
+
+  <div class="muted" style="margin-top:14px;">
+    GitHub Pages: Settings → Pages → Deploy from branch → Branch: <b>main</b> / Folder: <b>/(root)</b>. Then open the Pages URL.
+  </div>
+</div>
+
+<script>
+(() => {
+  // ========= Data =========
+  // Percent odds are stored as probability weights; 1/x odds are stored as denominators.
+  // For percent entries, we keep exact percent probability and later renormalize egg table.
+  // For 1/x entries, we convert to probability using 1/denom (then apply luck to denom first).
+  const EGGS = [
+    {
+      name: "Common Egg",
+      cost: 50,
+      currency: "coins",
+      enabled: true,
+      pets: [
+        { name: "Doggy", tier: "Common", type: "percent", value: 50 },
+        { name: "Kitty", tier: "Common", type: "percent", value: 35 },
+        { name: "Bunny", tier: "Rare", type: "percent", value: 15 },
+        { name: "Bear", tier: "Epic", type: "percent", value: 4.9 },
+        { name: "King Kitty", tier: "Royal", type: "odds", value: 19999999 }
+      ]
+    },
+    {
+      name: "Spotted Egg",
+      cost: 300,
+      currency: "coins",
+      enabled: true,
+      pets: [
+        { name: "Mouse", tier: "Common", type: "percent", value: 55 },
+        { name: "Deer", tier: "Common", type: "percent", value: 30 },
+        { name: "Fox", tier: "Rare", type: "percent", value: 11 },
+        { name: "Bee", tier: "Epic", type: "percent", value: 4 }
+      ]
+    },
+    {
+      name: "Rocky Egg",
+      cost: 1000,
+      currency: "coins",
+      enabled: true,
+      pets: [
+        { name: "Rocky Doggy", tier: "Common", type: "percent", value: 30 },
+        { name: "Rocky Kitty", tier: "Common", type: "percent", value: 25 },
+        { name: "Rocky Fox", tier: "Rare", type: "percent", value: 20 },
+        { name: "Rocky Dinosaur", tier: "Rare", type: "percent", value: 15 },
+        { name: "Rocky Golem", tier: "Rare", type: "percent", value: 7 },
+        { name: "Rocky Dragon", tier: "Epic", type: "percent", value: 3 }
+      ]
+    },
+    {
+      name: "Mushroom Egg",
+      cost: 2500,
+      currency: "coins",
+      enabled: true,
+      pets: [
+        { name: "Mushroom Doggy", tier: "Common", type: "percent", value: 55 },
+        { name: "Mushroom Kitty", tier: "Common", type: "percent", value: 30 },
+        { name: "Mushroom Bunny", tier: "Rare", type: "percent", value: 11 },
+        { name: "Mushroom Fox", tier: "Epic", type: "percent", value: 3.69 },
+        { name: "Majestic Mushy", tier: "Legendary", type: "odds", value: 333 },
+        { name: "King Mushy", tier: "Secret", type: "odds", value: 3000000 }
+      ]
+    },
+    {
+      name: "Leaf Egg",
+      cost: 5000,
+      currency: "coins",
+      enabled: true,
+      pets: [
+        { name: "Leaf Doggy", tier: "Common", type: "percent", value: 55 },
+        { name: "Leaf Kitty", tier: "Common", type: "percent", value: 30 },
+        { name: "Leaf Bunny", tier: "Rare", type: "percent", value: 11 },
+        { name: "Squirrel", tier: "Epic", type: "percent", value: 3.69 },
+        { name: "Angelic Pumpkin", tier: "Legendary", type: "odds", value: 571 },
+        { name: "Elegant Leaf", tier: "Secret", type: "odds", value: 3000000 }
+      ]
+    },
+    {
+      name: "Arctic Egg",
+      cost: 12500,
+      currency: "coins",
+      enabled: true,
+      pets: [
+        { name: "Arctic Doggy", tier: "Common", type: "percent", value: 55 },
+        { name: "Arctic Golem", tier: "Common", type: "percent", value: 30 },
+        { name: "Arctic Bear", tier: "Rare", type: "percent", value: 11 },
+        { name: "Arctic Dragon", tier: "Epic", type: "percent", value: 3.69 },
+        { name: "Mammoth", tier: "Legendary", type: "odds", value: 500 },
+        { name: "Yeti", tier: "Secret", type: "odds", value: 3000000 }
+      ]
+    },
+    {
+      name: "Icy Egg",
+      cost: 20000,
+      currency: "coins",
+      enabled: true,
+      pets: [
+        { name: "Icy Bear", tier: "Common", type: "percent", value: 55 },
+        { name: "Icy Fox", tier: "Common", type: "percent", value: 30 },
+        { name: "Icy Deer", tier: "Rare", type: "percent", value: 11 },
+        { name: "Icy Dinosaur", tier: "Epic", type: "percent", value: 3.69 },
+        { name: "Icy Blast", tier: "Legendary", type: "odds", value: 2000 },
+        { name: "Frost Overlord", tier: "Legendary", type: "odds", value: 20000 },
+        { name: "Frost Fiend", tier: "Secret", type: "odds", value: 3500000 }
+      ]
+    },
+    // Release Egg is gone (kept disabled so you can re-enable later if needed)
+    {
+      name: "Release Egg (Legacy)",
+      cost: 2000,
+      currency: "coins",
+      enabled: false,
+      pets: [
+        { name: "Release Doggy", tier: "Common", type: "percent", value: 50 },
+        { name: "Release Fox", tier: "Common", type: "percent", value: 40 },
+        { name: "Release Dragon", tier: "Epic", type: "percent", value: 10 },
+        { name: "Release Serpent", tier: "Legendary", type: "odds", value: 1000 },
+        { name: "Release Overlord", tier: "Legendary", type: "odds", value: 13333 },
+        { name: "Release Hexarium", tier: "Legendary", type: "odds", value: 80000 },
+        { name: "Toxic Overseer", tier: "Secret", type: "odds", value: 3000000 },
+        { name: "Midnight Pyramidium", tier: "Royal", type: "odds", value: 19999999 }
+      ]
+    },
+    {
+      name: "Lovely Egg",
+      cost: 100,
+      currency: "hearts",
+      enabled: true,
+      pets: [
+        { name: "Lovely Doggy", tier: "Common", type: "percent", value: 50 },
+        { name: "Lovely Kitty", tier: "Rare", type: "percent", value: 40 },
+        { name: "Lovely Bunny", tier: "Epic", type: "percent", value: 10 },
+        { name: "Lovestruck Dragon", tier: "Legendary", type: "odds", value: 400 },
+        { name: "Lovestruck Star", tier: "Secret", type: "odds", value: 2000000 }
+      ]
+    },
+    {
+      name: "Valentines Egg",
+      cost: 500,
+      currency: "hearts",
+      enabled: true,
+      pets: [
+        { name: "Valentines Mouse", tier: "Common", type: "percent", value: 70 },
+        { name: "Valentines Fox", tier: "Rare", type: "percent", value: 25 },
+        { name: "Winged Heart", tier: "Epic", type: "percent", value: 4 },
+        { name: "Lovely Blast", tier: "Legendary", type: "odds", value: 1333 },
+        { name: "Lovely Teddy Bear", tier: "Legendary", type: "odds", value: 20000 },
+        { name: "Cupid", tier: "Legendary", type: "odds", value: 111111 },
+        { name: "Heavenly Rose", tier: "Secret", type: "odds", value: 4999999 },
+        { name: "Lovely Harp", tier: "Secret", type: "odds", value: 12500000 },
+        { name: "Loyal Heart", tier: "Royal", type: "odds", value: 30000000 }
+      ]
+    },
+    {
+      name: "Secret Bounty",
+      cost: 0,
+      currency: "special",
+      enabled: true,
+      pets: [
+        { name: "Prisma Shard", tier: "Secret", type: "odds", value: 12500000 }
+      ]
+    }
+  ];
+
+  // ========= Helpers =========
+  const fmtInt = (n) => Math.round(n).toLocaleString();
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+
+  function luckMultiplierFromPercent(luckPercent){
+    const lp = Number(luckPercent);
+    if (!isFinite(lp) || lp < 0) return 1;
+    return 1 + (lp/100);
+  }
+
+  function parseOddsInputToProb(s){
+    // Returns probability in (0,1], or null if invalid.
+    if (!s) return null;
+    let t = String(s).trim().toLowerCase().replace(/,/g,'');
+    if (!t) return null;
+
+    // "1/3000000"
+    if (t.includes('/')) {
+      const parts = t.split('/');
+      const denom = Number(parts[1]);
+      if (isFinite(denom) && denom > 0) return 1/denom;
+      return null;
+    }
+
+    // "0.01%" or "3.69%"
+    if (t.endsWith('%')) {
+      const p = Number(t.slice(0,-1));
+      if (isFinite(p) && p > 0) return p/100;
+      return null;
+    }
+
+    // "0.000001" probability
+    const v = Number(t);
+    if (isFinite(v) && v > 0 && v <= 1) return v;
+
+    // "3000000" treat as denominator
+    if (isFinite(v) && v > 1) return 1/v;
+
+    return null;
+  }
+
+  function petBaseProb(pet){
+    if (pet.type === "percent") return pet.value / 100;
+    if (pet.type === "odds") return 1 / pet.value;
+    return 0;
+  }
+
+  function petEffectiveProb(pet, luckMult){
+    // Apply luck only to denominator-odds pets (Legendary/Secret/Royal in your list),
+    // NOT to percent entries (because your listed percents should already be the base table).
+    // If later you confirm luck affects everything, we can change this in one place.
+    if (pet.type === "odds") {
+      const effDen = pet.value / luckMult;
+      return 1 / effDen;
+    }
+    return petBaseProb(pet);
+  }
+
+  function eggProbabilityTable(egg, luckMult){
+    // Build a normalized distribution (sums to 1) using:
+    // - percent entries as p = percent/100
+    // - odds entries as p = 1/(denom/luckMult)
+    // Then normalize in case totals don't sum exactly to 1 (they won't, because odds entries add extra).
+    const items = egg.pets.map(p => {
+      const raw = petEffectiveProb(p, luckMult);
+      return { ...p, rawProb: raw };
+    });
+    const total = items.reduce((a,b)=>a + (b.rawProb||0), 0);
+    const safeTotal = total > 0 ? total : 1;
+    return items.map(it => ({...it, prob: (it.rawProb||0)/safeTotal}));
+  }
+
+  function sampleFromTable(table){
+    // table entries must include .prob summing to 1
+    const r = Math.random();
+    let acc = 0;
+    for (const it of table){
+      acc += it.prob;
+      if (r <= acc) return it;
+    }
+    return table[table.length-1];
+  }
+
+  function timePretty(sec){
+    if (!isFinite(sec) || sec < 0) return "N/A";
+    if (sec < 60) return `${sec.toFixed(2)}s`;
+    const min = sec/60;
+    if (min < 60) return `${min.toFixed(2)}m`;
+    const hr = min/60;
+    if (hr < 24) return `${hr.toFixed(2)}h`;
+    const day = hr/24;
+    return `${day.toFixed(2)}d`;
+  }
+
+  function chanceAtLeastOne(perCycleChance, cycles){
+    return 1 - Math.pow(1 - perCycleChance, cycles);
+  }
+
+  function cyclesForTargetChance(perCycleChance, targetP){
+    // cycles = ln(1-targetP)/ln(1-perCycleChance)
+    if (perCycleChance <= 0) return Infinity;
+    if (perCycleChance >= 1) return 1;
+    return Math.log(1 - targetP) / Math.log(1 - perCycleChance);
+  }
+
+  // ========= UI =========
+  const el = (id) => document.getElementById(id);
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const tabs = document.querySelectorAll(".tab");
+    tabs.forEach(t => t.addEventListener("click", () => {
+      tabs.forEach(x => x.classList.remove("active"));
+      t.classList.add("active");
+      const tab = t.dataset.tab;
+      el("single").style.display = tab === "single" ? "" : "none";
+      el("eggs").style.display = tab === "eggs" ? "" : "none";
+      el("sim").style.display = tab === "sim" ? "" : "none";
+    }));
+
+    // populate eggs
+    const eggSelect = el("eggSelect");
+    const simEggSelect = el("simEggSelect");
+    const enabledEggs = EGGS.filter(e => e.enabled);
+
+    for (const e of enabledEggs){
+      const opt1 = document.createElement("option");
+      opt1.value = e.name;
+      opt1.textContent = `${e.name}`;
+      eggSelect.appendChild(opt1);
+
+      const opt2 = document.createElement("option");
+      opt2.value = e.name;
+      opt2.textContent = `${e.name}`;
+      simEggSelect.appendChild(opt2);
+    }
+
+    // populate single pet dropdown (all pets from enabled eggs)
+    const allPets = [];
+    for (const egg of enabledEggs){
+      for (const p of egg.pets){
+        allPets.push({ egg: egg.name, cost: egg.cost, currency: egg.currency, ...p });
+      }
+    }
+
+    const singlePetSelect = el("singlePetSelect");
+    allPets.forEach((p, idx) => {
+      const opt = document.createElement("option");
+      opt.value = String(idx);
+      opt.textContent = `${p.name} (${p.egg})`;
+      singlePetSelect.appendChild(opt);
+    });
+
+    // populate sim stop pet dropdown (from selected egg later too)
+    const simStopPet = el("simStopPet");
+    function refreshSimStopPet(){
+      const eggName = simEggSelect.value;
+      const egg = enabledEggs.find(e => e.name === eggName);
+      simStopPet.innerHTML = `<option value="">No early stop</option>`;
+      if (!egg) return;
+      egg.pets.forEach(p => {
+        const o = document.createElement("option");
+        o.value = p.name;
+        o.textContent = `${p.name} (${p.tier})`;
+        simStopPet.appendChild(o);
+      });
+    }
+    simEggSelect.addEventListener("change", refreshSimStopPet);
+    refreshSimStopPet();
+
+    // Luck multiplier live text
+    const updateLuckText = () => {
+      const mul = luckMultiplierFromPercent(el("luckPercent").value);
+      el("luckMulText").textContent = `Multiplier: ${mul.toFixed(2)}×`;
+    };
+    el("luckPercent").addEventListener("input", updateLuckText);
+    updateLuckText();
+
+    // Single pet meta
+    const updateSingleMeta = () => {
+      const idx = Number(singlePetSelect.value);
+      const p = allPets[idx];
+      if (!p) { el("singlePetMeta").textContent = ""; return; }
+      const baseStr = p.type === "percent"
+        ? `${p.value}%`
+        : `1/${p.value.toLocaleString()}`;
+      el("singlePetMeta").innerHTML =
+        `Egg: <b>${p.egg}</b> • Tier: <span class="tier ${p.tier}">${p.tier}</span> • Base: <b>${baseStr}</b>`;
+    };
+    singlePetSelect.addEventListener("change", updateSingleMeta);
+    updateSingleMeta();
+
+    // Egg meta
+    const updateEggMeta = () => {
+      const egg = enabledEggs.find(e => e.name === eggSelect.value);
+      if (!egg) { el("eggMeta").textContent = ""; return; }
+      const costStr = egg.currency === "coins" ? `${egg.cost.toLocaleString()} coins`
+                    : egg.currency === "hearts" ? `${egg.cost.toLocaleString()} hearts`
+                    : egg.currency;
+      el("eggMeta").textContent = `Cost: ${costStr}`;
+    };
+    eggSelect.addEventListener("change", updateEggMeta);
+    updateEggMeta();
+
+    // ===== Single calc =====
+    el("calcSingleBtn").addEventListener("click", () => {
+      const luckMult = luckMultiplierFromPercent(el("luckPercent").value);
+      const hatchTime = Number(el("hatchTimeSec").value);
+      const eggsPer = Math.max(1, Math.floor(Number(el("eggsPerCycle").value || 1)));
+      const shinyMult = Math.max(1, Number(el("shinyMult").value || 100));
+
+      const overrideProb = parseOddsInputToProb(el("baseOddsInput").value);
+      let baseDenomDisplay = "";
+      let effDen = null;
+
+      if (overrideProb) {
+        effDen = 1 / overrideProb; // denom before luck if user entered denom/prob/%
+        baseDenomDisplay = `Custom input: 1/${fmtInt(effDen)} (approx)`;
+      } else {
+        const idx = Number(singlePetSelect.value);
+        const p = allPets[idx];
+        if (!p) { el("singleOut").textContent = "Pick a pet first."; return; }
+        if (p.type === "percent") {
+          // If you selected a percent-based pet, treat its probability as fixed percent.
+          // (Luck not applied to these by default in this v1)
+          const perEggProb = p.value / 100;
+          const perCycleChance = 1 - Math.pow(1 - perEggProb, eggsPer);
+
+          const target = Number(el("targetChance").value);
+          const cycles = cyclesForTargetChance(perCycleChance, target);
+          const sec = cycles * hatchTime;
+
+          let out =
+`Pet: ${p.name} (${p.tier}) — from ${p.egg}
+Base chance: ${p.value}%
+Egg Hatches per cycle: ${eggsPer}
+Per-cycle chance (at least one): ${(perCycleChance*100).toFixed(6)}%
+Time for ${(target*100).toFixed(0)}% chance: ~${timePretty(sec)} (${isFinite(cycles)?cycles.toFixed(2):"∞"} cycles)
+`;
+          if (el("wantShiny").value === "yes") {
+            out += `\nShiny: (needs your in-game shiny odds). For now, use Simulator tab with “Stop condition: shiny”.\n`;
+          }
+          el("singleOut").textContent = out;
+          return;
+        }
+
+        // odds pet (1/x): apply luck
+        effDen = p.value / luckMult;
+        baseDenomDisplay = `Base odds: 1/${fmtInt(p.value)}  →  Effective: 1/${fmtInt(effDen)}`;
+      }
+
+      // Now compute per-cycle chance for odds-based denom
+      const perEggProb = 1 / effDen;
+      const perCycleChance = 1 - Math.pow(1 - perEggProb, eggsPer);
+      const target = Number(el("targetChance").value);
+      const cycles = cyclesForTargetChance(perCycleChance, target);
+      const sec = cycles * hatchTime;
+
+      let out =
+`${baseDenomDisplay}
+Luck: ${Number(el("luckPercent").value||0).toLocaleString()}% (${luckMult.toFixed(2)}×)
+Egg Hatches per cycle: ${eggsPer}
+Hatch Time: ${hatchTime}s
+
+Per-cycle chance (at least one): ${(perCycleChance*100).toFixed(6)}%
+Time for ${(target*100).toFixed(0)}% chance: ~${timePretty(sec)} (${isFinite(cycles)?cycles.toFixed(2):"∞"} cycles)
+Expected cycles for 1 success (mean): ~${(1/perCycleChance).toFixed(2)}
+`;
+
+      if (el("wantShiny").value === "yes") {
+        const effDenShiny = effDen * shinyMult;
+        const perEggProbShiny = 1 / effDenShiny;
+        const perCycleChanceShiny = 1 - Math.pow(1 - perEggProbShiny, eggsPer);
+        const cyclesShiny = cyclesForTargetChance(perCycleChanceShiny, target);
+        const secShiny = cyclesShiny * hatchTime;
+
+        out +=
+`\n--- Shiny (multiplier ×${shinyMult}) ---
+Effective shiny odds: 1/${fmtInt(effDenShiny)}
+Per-cycle shiny chance: ${(perCycleChanceShiny*100).toFixed(8)}%
+Time for ${(target*100).toFixed(0)}% shiny chance: ~${timePretty(secShiny)} (${isFinite(cyclesShiny)?cyclesShiny.toFixed(2):"∞"} cycles)
+`;
+      }
+
+      el("singleOut").textContent = out;
+    });
+
+    el("copySingleBtn").addEventListener("click", () => {
+      navigator.clipboard.writeText(el("singleOut").textContent || "");
+    });
+
+    // ===== Egg breakdown =====
+    el("renderEggBtn").addEventListener("click", () => {
+      const luckMult = luckMultiplierFromPercent(el("luckPercent").value);
+      const eggsPer = Math.max(1, Math.floor(Number(el("eggsPerCycle").value || 1)));
+      const hatchTime = Number(el("hatchTimeSec").value);
+
+      const egg = enabledEggs.find(e => e.name === eggSelect.value);
+      if (!egg) { el("eggOut").textContent = "Select an egg."; return; }
+
+      const tier = el("tierFilter").value || "";
+      const table = eggProbabilityTable(egg, luckMult);
+
+      // We’ll show both:
+      // - normalized probability in egg table (so totals make sense)
+      // - “effective 1/x” for odds pets after luck
+      let lines = [];
+      lines.push(`${egg.name} — Cost: ${egg.cost.toLocaleString()} ${egg.currency}`);
+      lines.push(`Using Luck: ${Number(el("luckPercent").value||0).toLocaleString()}% (${luckMult.toFixed(2)}×)`);
+      lines.push(`Egg Hatches per cycle: ${eggsPer} • Hatch Time: ${hatchTime}s`);
+      lines.push("");
+
+      const filtered = table.filter(p => !tier || p.tier === tier);
+
+      filtered.forEach(p => {
+        let base = "";
+        let eff = "";
+        if (p.type === "percent") {
+          base = `${p.value}%`;
+          eff = `${(p.prob*100).toFixed(6)}% (normalized)`;
+        } else {
+          const effDen = p.value / luckMult;
+          base = `1/${fmtInt(p.value)}`;
+          eff = `1/${fmtInt(effDen)} (luck) • ${(p.prob*100).toFixed(6)}% (normalized)`;
+        }
+
+        // Chance per cycle to get at least one of this pet:
+        const perEggProb = p.prob; // using normalized table for sampling; per-cycle chance for "at least one" in N rolls from that table:
+        const perCycleChance = 1 - Math.pow(1 - perEggProb, eggsPer);
+        const expCycles = perCycleChance > 0 ? (1/perCycleChance) : Infinity;
+
+        lines.push(`${p.name}  [${p.tier}]`);
+        lines.push(`  Base: ${base}`);
+        lines.push(`  Effective: ${eff}`);
+        lines.push(`  Per-cycle chance (≥1): ${(perCycleChance*100).toFixed(6)}% • Mean cycles: ${isFinite(expCycles)?expCycles.toFixed(2):"∞"}`);
+      });
+
+      el("eggOut").textContent = lines.join("\n");
+    });
+
+    el("copyEggBtn").addEventListener("click", () => {
+      navigator.clipboard.writeText(el("eggOut").textContent || "");
+    });
+
+    // ===== Simulator =====
+    el("simBtn").addEventListener("click", () => {
+      const luckMult = luckMultiplierFromPercent(el("luckPercent").value);
+      const eggsPer = Math.max(1, Math.floor(Number(el("eggsPerCycle").value || 1)));
+      const hatchTime = Number(el("hatchTimeSec").value);
+      const shinyMult = Math.max(1, Number(el("shinyMult").value || 100));
+
+      const egg = enabledEggs.find(e => e.name === simEggSelect.value);
+      if (!egg) { el("simOut").textContent = "Select an egg."; return; }
+
+      const cyclesRequested = Math.max(1, Math.floor(Number(el("simCycles").value || 1)));
+      const stopPet = el("simStopPet").value || "";
+      const stopMode = el("simStopMode").value;
+
+      const table = eggProbabilityTable(egg, luckMult);
+
+      const counts = {};
+      table.forEach(p => counts[p.name] = 0);
+
+      let cyclesDone = 0;
+      let stopHit = false;
+      let stopAtCycle = null;
+
+      // If stopping by shiny, we treat shiny as independent roll AFTER pet,
+      // using "shinyMult" as odds multiplier (matches your rule).
+      for (let c = 0; c < cyclesRequested; c++){
+        cyclesDone++;
+        for (let r = 0; r < eggsPer; r++){
+          const pet = sampleFromTable(table);
+          counts[pet.name]++;
+
+          if (stopPet && pet.name === stopPet) {
+            if (stopMode === "any") {
+              stopHit = true;
+              stopAtCycle = cyclesDone;
+              break;
+            } else if (stopMode === "shiny") {
+              // probability of shiny for this pet = base pet odds multiplied by shiny multiplier in denominator
+              // If pet came from percent table, we approximate shiny as (pet prob / shinyMult).
+              // If pet was odds-based, shiny is ( (1/(denom/luck)) / shinyMult ), but we don't know denom here after normalization.
+              // To keep v1 consistent with your "×100" rule, we use: shinyChance = pet.prob / shinyMult (approx).
+              const shinyChance = clamp((pet.prob / shinyMult), 0, 1);
+              if (Math.random() < shinyChance) {
+                stopHit = true;
+                stopAtCycle = cyclesDone;
+                break;
+              }
+            }
+          }
+        }
+        if (stopHit) break;
+      }
+
+      const totalEggs = cyclesDone * eggsPer;
+      const totalTime = cyclesDone * hatchTime;
+
+      // Build output
+      const lines = [];
+      lines.push(`Simulation — ${egg.name}`);
+      lines.push(`Luck: ${Number(el("luckPercent").value||0).toLocaleString()}% (${luckMult.toFixed(2)}×)`);
+      lines.push(`Egg Hatches per cycle: ${eggsPer} • Hatch Time: ${hatchTime}s`);
+      lines.push(`Cycles simulated: ${cyclesDone.toLocaleString()} (requested ${cyclesRequested.toLocaleString()})`);
+      lines.push(`Total eggs rolled: ${totalEggs.toLocaleString()} • Simulated time: ${timePretty(totalTime)}`);
+      if (stopPet) {
+        lines.push(`Stop target: ${stopPet} (${stopMode === "shiny" ? "shiny" : "any"})`);
+        lines.push(stopHit ? `✅ Hit at cycle ${stopAtCycle}` : `❌ Not hit`);
+      }
+      lines.push("");
+      lines.push("Counts:");
+      // show counts sorted desc
+      Object.entries(counts)
+        .sort((a,b)=>b[1]-a[1])
+        .forEach(([name, ct]) => lines.push(`  ${name}: ${ct.toLocaleString()}`));
+
+      el("simOut").textContent = lines.join("\n");
+    });
+
+    el("copySimBtn").addEventListener("click", () => {
+      navigator.clipboard.writeText(el("simOut").textContent || "");
+    });
+  });
+})();
+</script>
+</body>
+</html>
