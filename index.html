@@ -32,7 +32,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Royal Hatchers Hatch Calculator <span class="pill">v1</span></h1>
+  <h1>Royal Hatchers Hatch Calculator <span class="pill">v1.1</span></h1>
   <div class="muted">Tip: Use your in-game Debug values for the most accurate results (Luck %, Hatch Time, Egg Hatches).</div>
 
   <!-- STATS -->
@@ -48,7 +48,7 @@
         <input id="hatchTimeSec" type="number" value="1" min="0.01" step="0.01" placeholder="Example: 0.9" />
       </div>
       <div>
-        <label>Egg Hatches per Cycle (Debug) 🥚</label>
+        <label>Egg Hatches per Batch (Debug) 🥚</label>
         <input id="eggsPerCycle" type="number" value="1" min="1" step="1" placeholder="Example: 10" />
       </div>
       <div>
@@ -83,14 +83,6 @@
 
     <div class="row" style="margin-top:10px;">
       <div>
-        <label>Target chance</label>
-        <select id="targetChance">
-          <option value="0.5">50%</option>
-          <option value="0.9">90%</option>
-          <option value="0.99">99%</option>
-        </select>
-      </div>
-      <div>
         <label>Also compute shiny?</label>
         <select id="wantShiny">
           <option value="no">No</option>
@@ -115,15 +107,19 @@
         <div class="muted" id="eggMeta"></div>
       </div>
       <div>
-        <label>Filter tier (optional)</label>
+        <label>Filter tier</label>
         <select id="tierFilter">
+          <!-- default is Legendary+ -->
+          <option value="Legendary+">Legendary+</option>
           <option value="">All</option>
-          <option value="Common">Common</option>
-          <option value="Rare">Rare</option>
-          <option value="Epic">Epic</option>
+          <option value="Epic+">Epic+</option>
           <option value="Legendary">Legendary</option>
-          <option value="Secret">Secret</option>
-          <option value="Royal">Royal</option>
+          <option value="Secret+">Secret+</option>
+          <option value="Royal">Royal only</option>
+          <option value="Secret">Secret only</option>
+          <option value="Epic">Epic only</option>
+          <option value="Rare">Rare only</option>
+          <option value="Common">Common only</option>
         </select>
       </div>
     </div>
@@ -144,9 +140,9 @@
         <select id="simEggSelect"></select>
       </div>
       <div>
-        <label>Cycles to simulate</label>
+        <label>Batches to simulate</label>
         <input id="simCycles" type="number" min="1" step="1" value="5000"/>
-        <div class="muted">Each cycle hatches (Egg Hatches) eggs.</div>
+        <div class="muted">Each batch opens (Egg Hatches) eggs.</div>
       </div>
       <div>
         <label>Stop early if hit (optional)</label>
@@ -179,9 +175,6 @@
 <script>
 (() => {
   // ========= Data =========
-  // Percent odds are stored as probability weights; 1/x odds are stored as denominators.
-  // For percent entries, we keep exact percent probability and later renormalize egg table.
-  // For 1/x entries, we convert to probability using 1/denom (then apply luck to denom first).
   const EGGS = [
     {
       name: "Common Egg",
@@ -279,7 +272,6 @@
         { name: "Frost Fiend", tier: "Secret", type: "odds", value: 3500000 }
       ]
     },
-    // Release Egg is gone (kept disabled so you can re-enable later if needed)
     {
       name: "Release Egg (Legacy)",
       cost: 2000,
@@ -348,12 +340,10 @@
   }
 
   function parseOddsInputToProb(s){
-    // Returns probability in (0,1], or null if invalid.
     if (!s) return null;
     let t = String(s).trim().toLowerCase().replace(/,/g,'');
     if (!t) return null;
 
-    // "1/3000000"
     if (t.includes('/')) {
       const parts = t.split('/');
       const denom = Number(parts[1]);
@@ -361,20 +351,15 @@
       return null;
     }
 
-    // "0.01%" or "3.69%"
     if (t.endsWith('%')) {
       const p = Number(t.slice(0,-1));
       if (isFinite(p) && p > 0) return p/100;
       return null;
     }
 
-    // "0.000001" probability
     const v = Number(t);
     if (isFinite(v) && v > 0 && v <= 1) return v;
-
-    // "3000000" treat as denominator
     if (isFinite(v) && v > 1) return 1/v;
-
     return null;
   }
 
@@ -385,9 +370,7 @@
   }
 
   function petEffectiveProb(pet, luckMult){
-    // Apply luck only to denominator-odds pets (Legendary/Secret/Royal in your list),
-    // NOT to percent entries (because your listed percents should already be the base table).
-    // If later you confirm luck affects everything, we can change this in one place.
+    // Luck only applies to 1/x entries (Legendary/Secret/Royal style pets)
     if (pet.type === "odds") {
       const effDen = pet.value / luckMult;
       return 1 / effDen;
@@ -396,10 +379,6 @@
   }
 
   function eggProbabilityTable(egg, luckMult){
-    // Build a normalized distribution (sums to 1) using:
-    // - percent entries as p = percent/100
-    // - odds entries as p = 1/(denom/luckMult)
-    // Then normalize in case totals don't sum exactly to 1 (they won't, because odds entries add extra).
     const items = egg.pets.map(p => {
       const raw = petEffectiveProb(p, luckMult);
       return { ...p, rawProb: raw };
@@ -410,7 +389,6 @@
   }
 
   function sampleFromTable(table){
-    // table entries must include .prob summing to 1
     const r = Math.random();
     let acc = 0;
     for (const it of table){
@@ -431,15 +409,36 @@
     return `${day.toFixed(2)}d`;
   }
 
-  function chanceAtLeastOne(perCycleChance, cycles){
-    return 1 - Math.pow(1 - perCycleChance, cycles);
+  function pctPretty(p){
+    // p is probability (0..1). return a clean percent string.
+    const pct = p * 100;
+    if (pct >= 10) return `${pct.toFixed(2)}%`;
+    if (pct >= 1) return `${pct.toFixed(3)}%`;
+    if (pct >= 0.1) return `${pct.toFixed(4)}%`;
+    if (pct >= 0.01) return `${pct.toFixed(5)}%`;
+    return `${pct.toFixed(6)}%`;
   }
 
-  function cyclesForTargetChance(perCycleChance, targetP){
-    // cycles = ln(1-targetP)/ln(1-perCycleChance)
-    if (perCycleChance <= 0) return Infinity;
-    if (perCycleChance >= 1) return 1;
-    return Math.log(1 - targetP) / Math.log(1 - perCycleChance);
+  function tierAtLeast(tier, minTier){
+    const order = ["Common","Rare","Epic","Legendary","Secret","Royal"];
+    const a = order.indexOf(tier);
+    const b = order.indexOf(minTier);
+    if (a === -1 || b === -1) return false;
+    return a >= b;
+  }
+
+  function passesTierFilter(tier, filter){
+    if (!filter) return true;
+    if (filter === "Legendary+") return tierAtLeast(tier, "Legendary");
+    if (filter === "Epic+") return tierAtLeast(tier, "Epic");
+    if (filter === "Secret+") return tierAtLeast(tier, "Secret");
+    if (filter === "Royal") return tier === "Royal";
+    if (filter === "Secret") return tier === "Secret";
+    if (filter === "Legendary") return tier === "Legendary";
+    if (filter === "Epic") return tier === "Epic";
+    if (filter === "Rare") return tier === "Rare";
+    if (filter === "Common") return tier === "Common";
+    return true;
   }
 
   // ========= UI =========
@@ -456,7 +455,6 @@
       el("sim").style.display = tab === "sim" ? "" : "none";
     }));
 
-    // populate eggs
     const eggSelect = el("eggSelect");
     const simEggSelect = el("simEggSelect");
     const enabledEggs = EGGS.filter(e => e.enabled);
@@ -473,7 +471,6 @@
       simEggSelect.appendChild(opt2);
     }
 
-    // populate single pet dropdown (all pets from enabled eggs)
     const allPets = [];
     for (const egg of enabledEggs){
       for (const p of egg.pets){
@@ -489,7 +486,6 @@
       singlePetSelect.appendChild(opt);
     });
 
-    // populate sim stop pet dropdown (from selected egg later too)
     const simStopPet = el("simStopPet");
     function refreshSimStopPet(){
       const eggName = simEggSelect.value;
@@ -506,7 +502,6 @@
     simEggSelect.addEventListener("change", refreshSimStopPet);
     refreshSimStopPet();
 
-    // Luck multiplier live text
     const updateLuckText = () => {
       const mul = luckMultiplierFromPercent(el("luckPercent").value);
       el("luckMulText").textContent = `Multiplier: ${mul.toFixed(2)}×`;
@@ -514,7 +509,6 @@
     el("luckPercent").addEventListener("input", updateLuckText);
     updateLuckText();
 
-    // Single pet meta
     const updateSingleMeta = () => {
       const idx = Number(singlePetSelect.value);
       const p = allPets[idx];
@@ -528,7 +522,6 @@
     singlePetSelect.addEventListener("change", updateSingleMeta);
     updateSingleMeta();
 
-    // Egg meta
     const updateEggMeta = () => {
       const egg = enabledEggs.find(e => e.name === eggSelect.value);
       if (!egg) { el("eggMeta").textContent = ""; return; }
@@ -540,7 +533,7 @@
     eggSelect.addEventListener("change", updateEggMeta);
     updateEggMeta();
 
-    // ===== Single calc =====
+    // ===== Single calc (simplified output, no 50/90/99 stuff) =====
     el("calcSingleBtn").addEventListener("click", () => {
       const luckMult = luckMultiplierFromPercent(el("luckPercent").value);
       const hatchTime = Number(el("hatchTimeSec").value);
@@ -548,75 +541,110 @@
       const shinyMult = Math.max(1, Number(el("shinyMult").value || 100));
 
       const overrideProb = parseOddsInputToProb(el("baseOddsInput").value);
-      let baseDenomDisplay = "";
-      let effDen = null;
 
+      // Helper: chance per batch and avg batches
+      const calcBatchStats = (perEggProb) => {
+        const perBatchChance = 1 - Math.pow(1 - perEggProb, eggsPer);
+        const avgBatches = perBatchChance > 0 ? (1 / perBatchChance) : Infinity;
+        const avgTime = avgBatches * hatchTime;
+        return { perBatchChance, avgBatches, avgTime };
+      };
+
+      // Custom input overrides
       if (overrideProb) {
-        effDen = 1 / overrideProb; // denom before luck if user entered denom/prob/%
-        baseDenomDisplay = `Custom input: 1/${fmtInt(effDen)} (approx)`;
-      } else {
-        const idx = Number(singlePetSelect.value);
-        const p = allPets[idx];
-        if (!p) { el("singleOut").textContent = "Pick a pet first."; return; }
-        if (p.type === "percent") {
-          // If you selected a percent-based pet, treat its probability as fixed percent.
-          // (Luck not applied to these by default in this v1)
-          const perEggProb = p.value / 100;
-          const perCycleChance = 1 - Math.pow(1 - perEggProb, eggsPer);
+        // Treat overrideProb as base probability (per egg) BEFORE luck. Apply luck only if the user entered a denominator-like value.
+        // To keep it simple: we interpret override as base odds, and if it's small (most are), we apply luck via denom scaling.
+        const approxDen = 1 / overrideProb;
+        const effDen = approxDen / luckMult;
+        const perEggProb = 1 / effDen;
 
-          const target = Number(el("targetChance").value);
-          const cycles = cyclesForTargetChance(perCycleChance, target);
-          const sec = cycles * hatchTime;
+        const { perBatchChance, avgBatches, avgTime } = calcBatchStats(perEggProb);
 
-          let out =
-`Pet: ${p.name} (${p.tier}) — from ${p.egg}
-Base chance: ${p.value}%
-Egg Hatches per cycle: ${eggsPer}
-Per-cycle chance (at least one): ${(perCycleChance*100).toFixed(6)}%
-Time for ${(target*100).toFixed(0)}% chance: ~${timePretty(sec)} (${isFinite(cycles)?cycles.toFixed(2):"∞"} cycles)
+        let out =
+`Custom Odds
+Effective Odds: 1/${fmtInt(effDen)}
+Chance per batch: ${pctPretty(perBatchChance)}
+Avg batches: ~${isFinite(avgBatches) ? fmtInt(avgBatches) : "∞"}
+Avg time: ~${timePretty(avgTime)}
 `;
-          if (el("wantShiny").value === "yes") {
-            out += `\nShiny: (needs your in-game shiny odds). For now, use Simulator tab with “Stop condition: shiny”.\n`;
-          }
-          el("singleOut").textContent = out;
-          return;
+        if (el("wantShiny").value === "yes") {
+          const effDenShiny = effDen * shinyMult;
+          const perEggProbShiny = 1 / effDenShiny;
+          const shinyStats = calcBatchStats(perEggProbShiny);
+          out +=
+`\nShiny (×${shinyMult})
+Shiny Odds: 1/${fmtInt(effDenShiny)}
+Shiny chance per batch: ${pctPretty(shinyStats.perBatchChance)}
+Avg shiny batches: ~${isFinite(shinyStats.avgBatches) ? fmtInt(shinyStats.avgBatches) : "∞"}
+Avg shiny time: ~${timePretty(shinyStats.avgTime)}
+`;
         }
 
-        // odds pet (1/x): apply luck
-        effDen = p.value / luckMult;
-        baseDenomDisplay = `Base odds: 1/${fmtInt(p.value)}  →  Effective: 1/${fmtInt(effDen)}`;
+        el("singleOut").textContent = out;
+        return;
       }
 
-      // Now compute per-cycle chance for odds-based denom
+      // From dropdown
+      const idx = Number(singlePetSelect.value);
+      const p = allPets[idx];
+      if (!p) { el("singleOut").textContent = "Pick a pet first."; return; }
+
+      // Percent pets: keep simple and do not apply luck in v1
+      if (p.type === "percent") {
+        const perEggProb = p.value / 100;
+        const { perBatchChance, avgBatches, avgTime } = calcBatchStats(perEggProb);
+
+        let out =
+`${p.name} [${p.tier}]
+Egg: ${p.egg}
+Odds: ${p.value}%
+
+Chance per batch: ${pctPretty(perBatchChance)}
+Avg batches: ~${isFinite(avgBatches) ? fmtInt(avgBatches) : "∞"}
+Avg time: ~${timePretty(avgTime)}
+`;
+
+        if (el("wantShiny").value === "yes") {
+          const perEggProbShiny = perEggProb / shinyMult; // approximate
+          const shinyStats = calcBatchStats(perEggProbShiny);
+          out +=
+`\nShiny (×${shinyMult})
+Shiny chance per batch: ${pctPretty(shinyStats.perBatchChance)}
+Avg shiny batches: ~${isFinite(shinyStats.avgBatches) ? fmtInt(shinyStats.avgBatches) : "∞"}
+Avg shiny time: ~${timePretty(shinyStats.avgTime)}
+`;
+        }
+
+        el("singleOut").textContent = out;
+        return;
+      }
+
+      // Odds pets: apply luck to denominator
+      const effDen = p.value / luckMult;
       const perEggProb = 1 / effDen;
-      const perCycleChance = 1 - Math.pow(1 - perEggProb, eggsPer);
-      const target = Number(el("targetChance").value);
-      const cycles = cyclesForTargetChance(perCycleChance, target);
-      const sec = cycles * hatchTime;
+      const { perBatchChance, avgBatches, avgTime } = calcBatchStats(perEggProb);
 
       let out =
-`${baseDenomDisplay}
-Luck: ${Number(el("luckPercent").value||0).toLocaleString()}% (${luckMult.toFixed(2)}×)
-Egg Hatches per cycle: ${eggsPer}
-Hatch Time: ${hatchTime}s
+`${p.name} [${p.tier}]
+Egg: ${p.egg}
+Base Odds: 1/${fmtInt(p.value)}
+Effective Odds: 1/${fmtInt(effDen)}
 
-Per-cycle chance (at least one): ${(perCycleChance*100).toFixed(6)}%
-Time for ${(target*100).toFixed(0)}% chance: ~${timePretty(sec)} (${isFinite(cycles)?cycles.toFixed(2):"∞"} cycles)
-Expected cycles for 1 success (mean): ~${(1/perCycleChance).toFixed(2)}
+Chance per batch: ${pctPretty(perBatchChance)}
+Avg batches: ~${isFinite(avgBatches) ? fmtInt(avgBatches) : "∞"}
+Avg time: ~${timePretty(avgTime)}
 `;
 
       if (el("wantShiny").value === "yes") {
         const effDenShiny = effDen * shinyMult;
         const perEggProbShiny = 1 / effDenShiny;
-        const perCycleChanceShiny = 1 - Math.pow(1 - perEggProbShiny, eggsPer);
-        const cyclesShiny = cyclesForTargetChance(perCycleChanceShiny, target);
-        const secShiny = cyclesShiny * hatchTime;
-
+        const shinyStats = calcBatchStats(perEggProbShiny);
         out +=
-`\n--- Shiny (multiplier ×${shinyMult}) ---
-Effective shiny odds: 1/${fmtInt(effDenShiny)}
-Per-cycle shiny chance: ${(perCycleChanceShiny*100).toFixed(8)}%
-Time for ${(target*100).toFixed(0)}% shiny chance: ~${timePretty(secShiny)} (${isFinite(cyclesShiny)?cyclesShiny.toFixed(2):"∞"} cycles)
+`\nShiny (×${shinyMult})
+Shiny Odds: 1/${fmtInt(effDenShiny)}
+Shiny chance per batch: ${pctPretty(shinyStats.perBatchChance)}
+Avg shiny batches: ~${isFinite(shinyStats.avgBatches) ? fmtInt(shinyStats.avgBatches) : "∞"}
+Avg shiny time: ~${timePretty(shinyStats.avgTime)}
 `;
       }
 
@@ -627,7 +655,7 @@ Time for ${(target*100).toFixed(0)}% shiny chance: ~${timePretty(secShiny)} (${i
       navigator.clipboard.writeText(el("singleOut").textContent || "");
     });
 
-    // ===== Egg breakdown =====
+    // ===== Egg breakdown (simplified output + Legendary+ default) =====
     el("renderEggBtn").addEventListener("click", () => {
       const luckMult = luckMultiplierFromPercent(el("luckPercent").value);
       const eggsPer = Math.max(1, Math.floor(Number(el("eggsPerCycle").value || 1)));
@@ -636,51 +664,57 @@ Time for ${(target*100).toFixed(0)}% shiny chance: ~${timePretty(secShiny)} (${i
       const egg = enabledEggs.find(e => e.name === eggSelect.value);
       if (!egg) { el("eggOut").textContent = "Select an egg."; return; }
 
-      const tier = el("tierFilter").value || "";
+      const filter = el("tierFilter").value || "Legendary+";
       const table = eggProbabilityTable(egg, luckMult);
 
-      // We’ll show both:
-      // - normalized probability in egg table (so totals make sense)
-      // - “effective 1/x” for odds pets after luck
+      // Helper: chance per batch + avg batches for this pet probability
+      const perBatchChance = (perEggProb) => 1 - Math.pow(1 - perEggProb, eggsPer);
+
       let lines = [];
       lines.push(`${egg.name} — Cost: ${egg.cost.toLocaleString()} ${egg.currency}`);
-      lines.push(`Using Luck: ${Number(el("luckPercent").value||0).toLocaleString()}% (${luckMult.toFixed(2)}×)`);
-      lines.push(`Egg Hatches per cycle: ${eggsPer} • Hatch Time: ${hatchTime}s`);
+      lines.push(`Luck: ${Number(el("luckPercent").value||0).toLocaleString()}% (${luckMult.toFixed(2)}×) • Eggs per batch: ${eggsPer} • Hatch time: ${hatchTime}s`);
+      lines.push(`Showing: ${filter}`);
       lines.push("");
 
-      const filtered = table.filter(p => !tier || p.tier === tier);
+      const filtered = table.filter(p => passesTierFilter(p.tier, filter));
+
+      if (filtered.length === 0) {
+        lines.push("No pets match that filter.");
+        el("eggOut").textContent = lines.join("\n");
+        return;
+      }
 
       filtered.forEach(p => {
-        let base = "";
-        let eff = "";
+        // Display odds clearly
+        let oddsLine = "";
+        let perEggProbForBatch = p.prob; // normalized prob used for per-batch chance in this egg table
+
         if (p.type === "percent") {
-          base = `${p.value}%`;
-          eff = `${(p.prob*100).toFixed(6)}% (normalized)`;
+          oddsLine = `Odds: ${p.value}%`;
         } else {
           const effDen = p.value / luckMult;
-          base = `1/${fmtInt(p.value)}`;
-          eff = `1/${fmtInt(effDen)} (luck) • ${(p.prob*100).toFixed(6)}% (normalized)`;
+          oddsLine = `Odds: 1/${fmtInt(effDen)} (effective)`;
         }
 
-        // Chance per cycle to get at least one of this pet:
-        const perEggProb = p.prob; // using normalized table for sampling; per-cycle chance for "at least one" in N rolls from that table:
-        const perCycleChance = 1 - Math.pow(1 - perEggProb, eggsPer);
-        const expCycles = perCycleChance > 0 ? (1/perCycleChance) : Infinity;
+        const pb = perBatchChance(perEggProbForBatch);
+        const avgB = pb > 0 ? (1 / pb) : Infinity;
+        const avgT = avgB * hatchTime;
 
         lines.push(`${p.name}  [${p.tier}]`);
-        lines.push(`  Base: ${base}`);
-        lines.push(`  Effective: ${eff}`);
-        lines.push(`  Per-cycle chance (≥1): ${(perCycleChance*100).toFixed(6)}% • Mean cycles: ${isFinite(expCycles)?expCycles.toFixed(2):"∞"}`);
+        lines.push(`  ${oddsLine}`);
+        lines.push(`  Chance per batch: ${pctPretty(pb)}`);
+        lines.push(`  Avg batches: ~${isFinite(avgB) ? fmtInt(avgB) : "∞"} • Avg time: ~${timePretty(avgT)}`);
+        lines.push("");
       });
 
-      el("eggOut").textContent = lines.join("\n");
+      el("eggOut").textContent = lines.join("\n").trim();
     });
 
     el("copyEggBtn").addEventListener("click", () => {
       navigator.clipboard.writeText(el("eggOut").textContent || "");
     });
 
-    // ===== Simulator =====
+    // ===== Simulator (rename cycles->batches in output only) =====
     el("simBtn").addEventListener("click", () => {
       const luckMult = luckMultiplierFromPercent(el("luckPercent").value);
       const eggsPer = Math.max(1, Math.floor(Number(el("eggsPerCycle").value || 1)));
@@ -690,7 +724,7 @@ Time for ${(target*100).toFixed(0)}% shiny chance: ~${timePretty(secShiny)} (${i
       const egg = enabledEggs.find(e => e.name === simEggSelect.value);
       if (!egg) { el("simOut").textContent = "Select an egg."; return; }
 
-      const cyclesRequested = Math.max(1, Math.floor(Number(el("simCycles").value || 1)));
+      const batchesRequested = Math.max(1, Math.floor(Number(el("simCycles").value || 1)));
       const stopPet = el("simStopPet").value || "";
       const stopMode = el("simStopMode").value;
 
@@ -699,14 +733,12 @@ Time for ${(target*100).toFixed(0)}% shiny chance: ~${timePretty(secShiny)} (${i
       const counts = {};
       table.forEach(p => counts[p.name] = 0);
 
-      let cyclesDone = 0;
+      let batchesDone = 0;
       let stopHit = false;
-      let stopAtCycle = null;
+      let stopAtBatch = null;
 
-      // If stopping by shiny, we treat shiny as independent roll AFTER pet,
-      // using "shinyMult" as odds multiplier (matches your rule).
-      for (let c = 0; c < cyclesRequested; c++){
-        cyclesDone++;
+      for (let c = 0; c < batchesRequested; c++){
+        batchesDone++;
         for (let r = 0; r < eggsPer; r++){
           const pet = sampleFromTable(table);
           counts[pet.name]++;
@@ -714,17 +746,13 @@ Time for ${(target*100).toFixed(0)}% shiny chance: ~${timePretty(secShiny)} (${i
           if (stopPet && pet.name === stopPet) {
             if (stopMode === "any") {
               stopHit = true;
-              stopAtCycle = cyclesDone;
+              stopAtBatch = batchesDone;
               break;
             } else if (stopMode === "shiny") {
-              // probability of shiny for this pet = base pet odds multiplied by shiny multiplier in denominator
-              // If pet came from percent table, we approximate shiny as (pet prob / shinyMult).
-              // If pet was odds-based, shiny is ( (1/(denom/luck)) / shinyMult ), but we don't know denom here after normalization.
-              // To keep v1 consistent with your "×100" rule, we use: shinyChance = pet.prob / shinyMult (approx).
-              const shinyChance = clamp((pet.prob / shinyMult), 0, 1);
+              const shinyChance = clamp((pet.prob / shinyMult), 0, 1); // simple v1
               if (Math.random() < shinyChance) {
                 stopHit = true;
-                stopAtCycle = cyclesDone;
+                stopAtBatch = batchesDone;
                 break;
               }
             }
@@ -733,23 +761,21 @@ Time for ${(target*100).toFixed(0)}% shiny chance: ~${timePretty(secShiny)} (${i
         if (stopHit) break;
       }
 
-      const totalEggs = cyclesDone * eggsPer;
-      const totalTime = cyclesDone * hatchTime;
+      const totalEggs = batchesDone * eggsPer;
+      const totalTime = batchesDone * hatchTime;
 
-      // Build output
       const lines = [];
       lines.push(`Simulation — ${egg.name}`);
       lines.push(`Luck: ${Number(el("luckPercent").value||0).toLocaleString()}% (${luckMult.toFixed(2)}×)`);
-      lines.push(`Egg Hatches per cycle: ${eggsPer} • Hatch Time: ${hatchTime}s`);
-      lines.push(`Cycles simulated: ${cyclesDone.toLocaleString()} (requested ${cyclesRequested.toLocaleString()})`);
-      lines.push(`Total eggs rolled: ${totalEggs.toLocaleString()} • Simulated time: ${timePretty(totalTime)}`);
+      lines.push(`Eggs per batch: ${eggsPer} • Hatch time: ${hatchTime}s`);
+      lines.push(`Batches simulated: ${batchesDone.toLocaleString()} (requested ${batchesRequested.toLocaleString()})`);
+      lines.push(`Total eggs opened: ${totalEggs.toLocaleString()} • Simulated time: ${timePretty(totalTime)}`);
       if (stopPet) {
         lines.push(`Stop target: ${stopPet} (${stopMode === "shiny" ? "shiny" : "any"})`);
-        lines.push(stopHit ? `✅ Hit at cycle ${stopAtCycle}` : `❌ Not hit`);
+        lines.push(stopHit ? `✅ Hit at batch ${stopAtBatch}` : `❌ Not hit`);
       }
       lines.push("");
       lines.push("Counts:");
-      // show counts sorted desc
       Object.entries(counts)
         .sort((a,b)=>b[1]-a[1])
         .forEach(([name, ct]) => lines.push(`  ${name}: ${ct.toLocaleString()}`));
